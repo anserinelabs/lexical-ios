@@ -64,19 +64,35 @@ public class QuoteNode: ElementNode {
     self.barWidth = barWidth
     self.rounded = rounded
     self.barInsets = barInsets
+    self.allBarXPositions = []
+  }
+
+  /// Internal initialiser used when a paragraph is nested inside multiple QuoteNodes.
+  /// `allBarXPositions` holds one x-offset (relative to `rect.minX`) per ancestor quote
+  /// level, ordered outermost-first (e.g. `[0, 40, 80]` for three levels of nesting).
+  /// When non-empty this replaces the single-bar behaviour driven by `barInsets.left`.
+  internal init(barColor: UIColor, barWidth: CGFloat, rounded: Bool, barInsets: UIEdgeInsets, allBarXPositions: [CGFloat]) {
+    self.barColor = barColor
+    self.barWidth = barWidth
+    self.rounded = rounded
+    self.barInsets = barInsets
+    self.allBarXPositions = allBarXPositions
   }
 
   let barColor: UIColor
   let barWidth: CGFloat
   let rounded: Bool
   let barInsets: UIEdgeInsets
+  /// X-offsets for every bar that should be drawn (one per nesting level).
+  /// Empty means "draw a single bar using `barInsets.left`" (backward-compatible default).
+  internal let allBarXPositions: [CGFloat]
 
   override public func isEqual(_ object: Any?) -> Bool {
     let lhs = self
     guard let rhs = object as? QuoteCustomDrawingAttributes else {
       return false
     }
-    return lhs.barColor == rhs.barColor && lhs.barWidth == rhs.barWidth && lhs.rounded == rhs.rounded && lhs.barInsets == rhs.barInsets
+    return lhs.barColor == rhs.barColor && lhs.barWidth == rhs.barWidth && lhs.rounded == rhs.rounded && lhs.barInsets == rhs.barInsets && lhs.allBarXPositions == rhs.allBarXPositions
   }
 }
 
@@ -90,18 +106,30 @@ extension QuoteNode {
       return { attributeKey, attributeValue, layoutManager, attributeRunCharacterRange, granularityExpandedCharacterRange, glyphRange, rect, firstLineFragment in
         guard let attributeValue = attributeValue as? QuoteCustomDrawingAttributes else { return }
 
-        let barRect = CGRect(
-          x: rect.minX + attributeValue.barInsets.left,
-          y: rect.minY + attributeValue.barInsets.top,
-          width: attributeValue.barWidth,
-          height: rect.height - attributeValue.barInsets.top - attributeValue.barInsets.bottom)
+        // Build the list of x-positions at which to draw bars.
+        // For a non-nested quote `allBarXPositions` is empty, so we fall back to the
+        // original single-bar behaviour (barInsets.left relative to rect.minX).
+        // For nested quotes each entry is an absolute offset from rect.minX, and
+        // barInsets.left is added on top of it so the configurable gap is preserved.
+        let barXPositions: [CGFloat] = attributeValue.allBarXPositions.isEmpty
+          ? [attributeValue.barInsets.left]
+          : attributeValue.allBarXPositions.map { $0 + attributeValue.barInsets.left }
+
         attributeValue.barColor.setFill()
 
-        if attributeValue.rounded {
-          let bezierPath = UIBezierPath(roundedRect: barRect, cornerRadius: attributeValue.barWidth / 2)
-          bezierPath.fill()
-        } else {
-          UIRectFill(barRect)
+        for xPos in barXPositions {
+          let barRect = CGRect(
+            x: rect.minX + xPos,
+            y: rect.minY + attributeValue.barInsets.top,
+            width: attributeValue.barWidth,
+            height: rect.height - attributeValue.barInsets.top - attributeValue.barInsets.bottom)
+
+          if attributeValue.rounded {
+            let bezierPath = UIBezierPath(roundedRect: barRect, cornerRadius: attributeValue.barWidth / 2)
+            bezierPath.fill()
+          } else {
+            UIRectFill(barRect)
+          }
         }
       }
     }

@@ -106,22 +106,43 @@ enum AttributeUtils {
     var node = node
     var attributes = [[NSAttributedString.Key: Any]]()
     var totalIndent = 0
+    var quoteDepth = 0
 
     attributes.append(node.getAttributedStringAttributes(theme: theme))
     if let elementNode = node as? ElementNode, elementNode.isInline() == false {
       totalIndent += elementNode.getIndent()
+      if elementNode is QuoteNode { quoteDepth += 1 }
     }
 
     while let parent = node.parent, let parentNode = state.nodeMap[parent] {
       attributes.append(parentNode.getAttributedStringAttributes(theme: theme))
       if let elementNode = parentNode as? ElementNode, elementNode.isInline() == false {
         totalIndent += elementNode.getIndent()
+        if elementNode is QuoteNode { quoteDepth += 1 }
       }
       node = parentNode
     }
 
     if totalIndent > 0 {
       attributes.append([.indent_internal: totalIndent])
+    }
+
+    // When a paragraph is nested inside more than one QuoteNode every ancestor level
+    // needs its own vertical bar drawn at a progressively deeper x-offset.  Because
+    // `attributedStringStyles` reverses the attributes array before reducing (innermost
+    // wins), inserting at index 0 ensures this computed value is processed last and
+    // therefore wins over the flat per-QuoteNode theme values for `quoteCustomDrawing`.
+    if quoteDepth > 1,
+       let baseAttr = theme.quote?[.quoteCustomDrawing] as? QuoteCustomDrawingAttributes {
+      let indentSize = CGFloat(theme.indentSize)
+      let offsets = (0..<quoteDepth).map { CGFloat($0) * indentSize }
+      let multiBarAttr = QuoteCustomDrawingAttributes(
+        barColor: baseAttr.barColor,
+        barWidth: baseAttr.barWidth,
+        rounded: baseAttr.rounded,
+        barInsets: baseAttr.barInsets,
+        allBarXPositions: offsets)
+      attributes.insert([.quoteCustomDrawing: multiBarAttr], at: 0)
     }
 
     return attributes

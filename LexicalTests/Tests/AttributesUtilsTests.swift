@@ -490,6 +490,137 @@ final class AttributesUtilsTests: XCTestCase {
     }
   }
 
+  func testNestedQuoteProducesStackedBars() throws {
+    // A QuoteNode inside another QuoteNode should produce a `quoteCustomDrawing`
+    // attribute whose `allBarXPositions` contains one entry per nesting level.
+    // The outer paragraph (depth 1) should still get the plain single-bar attribute.
+    var theme = Theme()
+    let barAttr = QuoteCustomDrawingAttributes(
+      barColor: .gray,
+      barWidth: 4,
+      rounded: false,
+      barInsets: UIEdgeInsets(top: 2, left: 0, bottom: 2, right: 0))
+    theme.quote = [.quoteCustomDrawing: barAttr]
+
+    let view = LexicalView(editorConfig: EditorConfig(theme: theme, plugins: []), featureFlags: FeatureFlags())
+    let editor = view.editor
+
+    try editor.update {
+      guard let editorState = getActiveEditorState(),
+        let rootNode: RootNode = try editorState.getRootNode()?.getWritable()
+      else {
+        XCTFail("should have editor state")
+        return
+      }
+      try rootNode.getChildren().forEach { try $0.remove() }
+
+      // Build: root > outerQuote > [outerPara, innerQuote > innerPara]
+      let outerTextNode = TextNode()
+      try outerTextNode.setText("outer text")
+      let outerPara = ParagraphNode()
+      try outerPara.append([outerTextNode])
+
+      let innerTextNode = TextNode()
+      try innerTextNode.setText("inner text")
+      let innerPara = ParagraphNode()
+      try innerPara.append([innerTextNode])
+      let innerQuote = QuoteNode()
+      try innerQuote.append([innerPara])
+
+      let outerQuote = QuoteNode()
+      try outerQuote.append([outerPara, innerQuote])
+      try rootNode.append([outerQuote])
+
+      let indentSize = CGFloat(editor.getTheme().indentSize)
+
+      // The outer paragraph (inside only one QuoteNode) should NOT get a multi-bar
+      // attribute — its `allBarXPositions` should be empty.
+      let outerAttrs = AttributeUtils.attributedStringStyles(
+        from: outerTextNode,
+        state: editorState,
+        theme: editor.getTheme()
+      )
+      if let outerQuoteDrawing = outerAttrs[.quoteCustomDrawing] as? QuoteCustomDrawingAttributes {
+        XCTAssertEqual(
+          outerQuoteDrawing.allBarXPositions, [],
+          "Single-level quote should not populate allBarXPositions"
+        )
+      } else {
+        XCTFail("Expected quoteCustomDrawing attribute on outer paragraph")
+      }
+
+      // The inner paragraph (inside two QuoteNodes) should get a multi-bar attribute
+      // with two positions: 0 for the outer bar, indentSize for the inner bar.
+      let innerAttrs = AttributeUtils.attributedStringStyles(
+        from: innerTextNode,
+        state: editorState,
+        theme: editor.getTheme()
+      )
+      if let innerQuoteDrawing = innerAttrs[.quoteCustomDrawing] as? QuoteCustomDrawingAttributes {
+        XCTAssertEqual(
+          innerQuoteDrawing.allBarXPositions,
+          [0, indentSize],
+          "Double-nested quote should have two bar x-positions"
+        )
+      } else {
+        XCTFail("Expected quoteCustomDrawing attribute on inner paragraph")
+      }
+    }
+  }
+
+  func testTripleNestedQuoteProducesThreeBars() throws {
+    // Three levels of QuoteNode nesting should produce three bar x-positions.
+    var theme = Theme()
+    let barAttr = QuoteCustomDrawingAttributes(
+      barColor: .gray,
+      barWidth: 4,
+      rounded: false,
+      barInsets: UIEdgeInsets(top: 2, left: 0, bottom: 2, right: 0))
+    theme.quote = [.quoteCustomDrawing: barAttr]
+
+    let view = LexicalView(editorConfig: EditorConfig(theme: theme, plugins: []), featureFlags: FeatureFlags())
+    let editor = view.editor
+
+    try editor.update {
+      guard let editorState = getActiveEditorState(),
+        let rootNode: RootNode = try editorState.getRootNode()?.getWritable()
+      else {
+        XCTFail("should have editor state")
+        return
+      }
+      try rootNode.getChildren().forEach { try $0.remove() }
+
+      let textNode = TextNode()
+      try textNode.setText("deeply nested")
+      let para = ParagraphNode()
+      try para.append([textNode])
+      let innermost = QuoteNode()
+      try innermost.append([para])
+      let middle = QuoteNode()
+      try middle.append([innermost])
+      let outer = QuoteNode()
+      try outer.append([middle])
+      try rootNode.append([outer])
+
+      let indentSize = CGFloat(editor.getTheme().indentSize)
+
+      let attrs = AttributeUtils.attributedStringStyles(
+        from: textNode,
+        state: editorState,
+        theme: editor.getTheme()
+      )
+      if let quoteDrawing = attrs[.quoteCustomDrawing] as? QuoteCustomDrawingAttributes {
+        XCTAssertEqual(
+          quoteDrawing.allBarXPositions,
+          [0, indentSize, 2 * indentSize],
+          "Triple-nested quote should have three bar x-positions"
+        )
+      } else {
+        XCTFail("Expected quoteCustomDrawing attribute on triply-nested paragraph")
+      }
+    }
+  }
+
   func testBlockLevelAttributesEmptyParagraphEndOfDocument() throws {
     let view = LexicalView(editorConfig: EditorConfig(theme: themeForBlockTests(), plugins: []), featureFlags: FeatureFlags())
     let editor = view.editor
