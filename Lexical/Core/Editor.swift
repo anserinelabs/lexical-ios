@@ -666,8 +666,11 @@ public final class Editor: NSObject {
           }
         }
 
-        if mode.allowUpdateWithoutTextStorage && textStorage == nil {
-          // we want to leave the pending editor state as pending here; it will be reconciled when a text storage is attached
+        if textStorage == nil && !headless {
+          // textStorage is nil — either the editor hasn't been attached to a view yet, or the
+          // frontend was deallocated asynchronously (e.g. an async update fired after the
+          // UITextView was removed). Leave pending state intact so it can be reconciled when
+          // a text storage is next attached.
           self.isUpdating = previouslyUpdating
           return
         }
