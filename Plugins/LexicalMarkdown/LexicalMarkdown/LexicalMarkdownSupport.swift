@@ -105,7 +105,7 @@ extension LexicalListPlugin.ListItemNode: NodeMarkdownBlockSupport {
     var inlineAccumulator: [InlineMarkup] = []
     for child in getChildren() {
       if let child = child as? NodeMarkdownBlockSupport {
-        if inlineAccumulator.count > 0 {
+        if !inlineAccumulator.isEmpty {
           blocks.append(Paragraph(inlineAccumulator))
           inlineAccumulator = []
         }
@@ -117,7 +117,7 @@ extension LexicalListPlugin.ListItemNode: NodeMarkdownBlockSupport {
         continue
       }
     }
-    if inlineAccumulator.count > 0 {
+    if !inlineAccumulator.isEmpty {
       blocks.append(Paragraph(inlineAccumulator))
     }
 
