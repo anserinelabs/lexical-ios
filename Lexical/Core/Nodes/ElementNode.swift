@@ -77,9 +77,9 @@ open class ElementNode: Node {
   override open func encode(to encoder: Encoder) throws {
     try super.encode(to: encoder)
     var container = encoder.container(keyedBy: CodingKeys.self)
-    try container.encode(self.getChildren(), forKey: .children)
-    try container.encode(self.direction, forKey: .direction)
-    try container.encode(self.indent, forKey: .indent)
+    try container.encode(getChildren(), forKey: .children)
+    try container.encode(direction, forKey: .direction)
+    try container.encode(indent, forKey: .indent)
     try container.encode("", forKey: .format)
   }
 
@@ -110,10 +110,10 @@ open class ElementNode: Node {
 
   open func append(_ nodesToAppend: [Node]) throws {
     try errorOnReadOnly()
-    let writeableSelf: ElementNode = try self.getWritable()
+    let writeableSelf: ElementNode = try getWritable()
     let writeableSelfKey = writeableSelf.key
     var writeableSelfChildren = writeableSelf.children
-    if let lastChild = self.getLastChild() {
+    if let lastChild = getLastChild() {
       internallyMarkNodeAsDirty(node: lastChild, cause: .userInitiated)
     }
 
@@ -144,7 +144,7 @@ open class ElementNode: Node {
   public func getFirstChild<T: Node>() -> T? {
     let children = getLatest().children
 
-    if children.count == 0 {
+    if children.isEmpty {
       return nil
     }
 
@@ -156,7 +156,7 @@ open class ElementNode: Node {
   public func getLastChild() -> Node? {
     let children = getLatest().children
 
-    if children.count == 0 {
+    if children.isEmpty {
       return nil
     }
 
@@ -199,7 +199,7 @@ open class ElementNode: Node {
   }
 
   public func getFirstDescendant() -> Node? {
-    var node: Node? = self.getFirstChild()
+    var node: Node? = getFirstChild()
     while let unwrappedNode = node {
       if let child = (unwrappedNode as? ElementNode)?.getFirstChild() {
         node = child
@@ -212,7 +212,7 @@ open class ElementNode: Node {
   }
 
   public func getLastDescendant() -> Node? {
-    var node = self.getLastChild()
+    var node = getLastChild()
     while let unwrappedNode = node {
       if let child = (unwrappedNode as? ElementNode)?.getLastChild() {
         node = child
@@ -298,7 +298,7 @@ open class ElementNode: Node {
   }
 
   override public func getPreamble() -> String {
-    if self.isInline() {
+    if isInline() {
       return ""
     }
 
