@@ -260,9 +260,9 @@ final class TextViewTests: XCTestCase {
       print(nodemap)
       XCTAssertTrue((nodemap["0"] as? ParagraphNode)?.children.count == 1)
       XCTAssertTrue((nodemap["1"] as? TextNode)?.getTextPart() == "Hello worldText")
-      XCTAssertTrue((nodemap["4"] as? ParagraphNode)?.children.count == 0)
-      XCTAssertTrue((nodemap["6"] as? ParagraphNode)?.children.count == 0)
-      XCTAssertTrue((nodemap["8"] as? ParagraphNode)?.children.count == 0)
+      XCTAssertTrue((nodemap["4"] as? ParagraphNode)?.children.isEmpty ?? false)
+      XCTAssertTrue((nodemap["6"] as? ParagraphNode)?.children.isEmpty ?? false)
+      XCTAssertTrue((nodemap["8"] as? ParagraphNode)?.children.isEmpty ?? false)
       XCTAssertTrue((nodemap["10"] as? ParagraphNode)?.children.count == 1)
       XCTAssertTrue((nodemap["9"] as? TextNode)?.getTextPart() == "Text")
     }
