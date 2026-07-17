@@ -37,6 +37,23 @@ protocol LexicalTextViewDelegate: NSObjectProtocol {
 
   fileprivate var textViewDelegate: TextViewDelegate = TextViewDelegate()
 
+  // MARK: - Caret rect hook
+
+  /// Optional hook to adjust the caret rectangle after UIKit computes it.
+  ///
+  /// `TextView` is created internally by `LexicalView` and isn't subclassable by
+  /// callers, so this closure is the supported way to tweak caret geometry -- for
+  /// example, to stop `paragraphSpacingBefore` (used for inter-paragraph spacing)
+  /// from inflating the caret height. It receives the text view and the
+  /// system-computed caret rect, and returns the rect to use. Defaults to `nil`,
+  /// in which case UIKit's caret rect is used unchanged.
+  public var caretRectTransform: ((TextView, CGRect, UITextPosition) -> CGRect)?
+
+  public override func caretRect(for position: UITextPosition) -> CGRect {
+    let rect = super.caretRect(for: position)
+    return caretRectTransform?(self, rect, position) ?? rect
+  }
+
   // MARK: - Init
 
   init(editorConfig: EditorConfig, featureFlags: FeatureFlags) {
