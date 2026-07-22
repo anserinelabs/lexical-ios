@@ -82,7 +82,25 @@ public final class NodeSelection: BaseSelection {
   }
 
   public func deleteCharacter(isBackwards: Bool) throws {
-    for node in try getNodes() {
+    let nodes = try getNodes()
+    if nodes.isEmpty {
+      return
+    }
+
+    // Node.removeNode only repositions the caret when the active selection is a RangeSelection;
+    // removing via a NodeSelection leaves no caret at all, which orphans the cursor (further
+    // typing/deletion has nothing to act on). Land the caret on the edge of the removed run
+    // first, while the boundary node is still attached to resolve its siblings.
+    let boundary = isBackwards ? nodes.first : nodes.last
+    if let boundary, boundary.getParent() != nil {
+      if isBackwards {
+        _ = try boundary.selectPrevious(anchorOffset: nil, focusOffset: nil)
+      } else {
+        _ = try boundary.selectNext(anchorOffset: nil, focusOffset: nil)
+      }
+    }
+
+    for node in nodes {
       try node.remove()
     }
   }

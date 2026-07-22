@@ -200,7 +200,19 @@ public extension LexicalViewDelegate {
       _ = responderForNodeSelection.becomeFirstResponder()
       return
     }
+    // A NodeSelection hands first-responder status to responderForNodeSelection. When the model
+    // returns to a RangeSelection (e.g. after deleting a node-selected decorator) the caret lives
+    // in the text view, so hand first-responder status back or no caret is shown.
+    //
+    // Set the native selection to match the model BEFORE taking first responder:
+    // TextView.becomeFirstResponder() calls onSelectionChange, which re-derives the model from the
+    // text view's current selectedRange. If the text view still holds the old node-selected
+    // decorator location, that re-derivation clobbers the caret we just computed. Setting the
+    // native selection first makes that re-derivation read the correct location.
     try textView.updateNativeSelection(from: selection)
+    if responderForNodeSelection.isFirstResponder {
+      _ = textView.becomeFirstResponder()
+    }
   }
 
   func setMarkedTextFromReconciler(_ markedText: NSAttributedString, selectedRange: NSRange) {
