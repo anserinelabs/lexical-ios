@@ -610,6 +610,7 @@ public final class Editor: NSObject {
     let isInsideNestedEditorBlock = (isEditorPresentInUpdateStack(self))
     let previousEditorStateForListeners = editorState
     let dirtyNodesForListeners = dirtyNodes
+    var errorToRecoverFrom: Error?
 
     try runWithStateLexicalScopeProperties(activeEditor: self, activeEditorState: pendingEditorState, readOnlyMode: false) {
       let previouslyUpdating = self.isUpdating
@@ -639,6 +640,30 @@ public final class Editor: NSObject {
           if !mode.skipTransforms {
             try applyAllTransforms()
           }
+
+          garbageCollectDetachedNodes(prevEditorState: editorState, editorState: pendingEditorState, dirtyLeaves: dirtyNodes)
+        }
+
+        // Validate the pending state before the reconciler touches the text storage. Reconciling
+        // first and validating after leaves an update that throws here half applied: the text
+        // storage and range cache describe the pending state, while the editor state, pending
+        // state and dirty nodes still describe the old one, so the next update reconciles the
+        // same change a second time.
+        if let pendingSelection = pendingEditorState.selection as? RangeSelection {
+          let anchor = pendingEditorState.nodeMap[pendingSelection.anchor.key]
+          let focus = pendingEditorState.nodeMap[pendingSelection.focus.key]
+          if anchor == nil || focus == nil {
+            let errorString =
+              """
+              updateEditor: selection has been lost because the previously selected nodes have been removed and
+              selection wasn't moved to another node. Ensure selection changes after removing/replacing a selected node.
+              """
+            throw LexicalError.invariantViolation(errorString)
+          }
+        } else if let pendingSelection = pendingEditorState.selection as? NodeSelection {
+          if pendingSelection.nodes.isEmpty {
+            pendingEditorState.selection = nil
+          }
         }
 
         if mode.allowUpdateWithoutTextStorage && textStorage == nil {
@@ -651,35 +676,18 @@ public final class Editor: NSObject {
           try Reconciler.updateEditorState(currentEditorState: editorState, pendingEditorState: pendingEditorState, editor: self, shouldReconcileSelection: !mode.suppressReconcilingSelection, markedTextOperation: mode.markedTextOperation)
         }
         self.isUpdating = previouslyUpdating
-        garbageCollectDetachedNodes(prevEditorState: editorState, editorState: pendingEditorState, dirtyLeaves: dirtyNodes)
       } catch {
         triggerErrorListeners(
           activeEditor: self,
           activeEditorState: pendingEditorState,
           previousEditorState: editorState,
           error: error)
-        isRecoveringFromError = true
-        resetEditor(pendingEditorState: editorState)
-        try beginUpdate({}, mode: UpdateBehaviourModificationMode())
+        // Recovering means re-rendering the last committed state, which is an update of its own,
+        // and an update started here would count as nested and return without reconciling. So
+        // record the error and recover once this update block has been left.
+        errorToRecoverFrom = error
         self.isUpdating = previouslyUpdating
         return
-      }
-
-      if let pendingSelection = pendingEditorState.selection as? RangeSelection {
-        let anchor = pendingEditorState.nodeMap[pendingSelection.anchor.key]
-        let focus = pendingEditorState.nodeMap[pendingSelection.focus.key]
-        if anchor == nil || focus == nil {
-          let errorString =
-            """
-            updateEditor: selection has been lost because the previously selected nodes have been removed and
-            selection wasn't moved to another node. Ensure selection changes after removing/replacing a selected node.
-            """
-          throw LexicalError.invariantViolation(errorString)
-        }
-      } else if let pendingSelection = pendingEditorState.selection as? NodeSelection {
-        if pendingSelection.nodes.isEmpty {
-          pendingEditorState.selection = nil
-        }
       }
 
       editorState = pendingEditorState
@@ -692,6 +700,14 @@ public final class Editor: NSObject {
     }
 
     if isInsideNestedEditorBlock {
+      return
+    }
+
+    if errorToRecoverFrom != nil {
+      // Throw the pending state away and re-render the last committed one, so the text storage and
+      // range cache describe the editor state again.
+      isRecoveringFromError = true
+      resetEditor(pendingEditorState: editorState)
       return
     }
 
