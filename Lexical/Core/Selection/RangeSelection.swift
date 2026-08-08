@@ -931,6 +931,28 @@ public final class RangeSelection: BaseSelection {
           }
         }
         return
+      } else if isBackwards, anchor.type == .element, let previousBlock = possibleNode as? ElementNode, !previousBlock.isInline(),
+        previousBlock.getParent()?.key == anchor.key {
+        // The caret sits between two blocks -- the point is on the element that holds them both,
+        // rather than inside either -- so there is no text node for removeText() to work on.
+        // Left to itself, removeText() resolves the end of the selection to the whole previous
+        // block and removes it, taking its content with it. Delete inside that block instead: an
+        // empty one goes away entirely, otherwise its last character does. Removing the block
+        // shifts the element offset this caret is expressed in, so it stays where it is.
+        //
+        // A caret at the start of an empty block is an element point too, and getAdjacentNode
+        // resolves it to the block above, but that is a merge rather than a deletion within the
+        // previous block, and the ordinary path below handles it.
+        if previousBlock.isEmpty() {
+          try previousBlock.remove()
+        } else {
+          let selectionInPreviousBlock = try previousBlock.selectEnd()
+          // selectEnd() moved the caret in the model only, and the deletion below counts back a
+          // character from the text view's caret. Keep the two in step.
+          try getActiveEditor()?.frontend?.updateNativeSelection(from: selectionInPreviousBlock)
+          try selectionInPreviousBlock.deleteCharacter(isBackwards: true)
+        }
+        return
       } else if !isBackwards, let possibleNode = possibleNode as? ElementNode, let anchorNode = anchorNode as? ElementNode, anchorNode.isEmpty() {
         try anchorNode.remove()
         try possibleNode.selectStart()
