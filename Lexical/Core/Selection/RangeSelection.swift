@@ -527,6 +527,18 @@ public final class RangeSelection: BaseSelection {
       try removeText()
     }
 
+    // A caret on the root's own child list has no block to insert into. Start one and run again
+    // from inside it; insertParagraph places it at the caret.
+    if isRootNode(node: try anchor.getNode()) {
+      try insertParagraph()
+      guard let bootstrapped = try getSelection() as? RangeSelection else { return false }
+      if isRootNode(node: try bootstrapped.anchor.getNode()) {
+        // The paragraph didn't take; recursing would not terminate.
+        return false
+      }
+      return try bootstrapped.insertNodes(nodes: nodes, selectStart: selectStart)
+    }
+
     let anchor = anchor
     let anchorOffset = anchor.offset
     let anchorNode = try anchor.getNode()
@@ -751,6 +763,21 @@ public final class RangeSelection: BaseSelection {
   // MARK: - Internal
 
   public func insertParagraph() throws {
+    // A caret on the root's own child list has no block to split, so the new paragraph simply
+    // takes the caret's place in that list. This is the one place a document with no blocks
+    // grows one back.
+    if isRootNode(node: try anchor.getNode()) {
+      guard let root = getRoot() else { return }
+      let paragraph = ParagraphNode()
+      if let childAtCaret = root.getChildAtIndex(index: anchor.offset) {
+        _ = try childAtCaret.insertBefore(nodeToInsert: paragraph)
+      } else {
+        try root.append([paragraph])
+      }
+      _ = try paragraph.select(anchorOffset: nil, focusOffset: nil)
+      return
+    }
+
     if !isCollapsed() {
       try removeText()
     }

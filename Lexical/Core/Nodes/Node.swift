@@ -552,6 +552,12 @@ open class Node: Codable {
         moveSelectionPointToSibling(point: focus, node: nodeToRemove, parent: parent)
         selectionMoved = true
       }
+    } else if let selection = selection as? NodeSelection, restoreSelection, selection.has(key: key)
+    {
+      // A NodeSelection has no caret of its own, so removing the node it holds would leave the
+      // cursor with nothing to act on. Land it on the node's leading edge while the node is
+      // still attached and can still resolve its siblings.
+      _ = try nodeToRemove.selectPrevious(anchorOffset: nil, focusOffset: nil)
     }
 
     let writeableParent = try parent.getWritable()
@@ -574,6 +580,14 @@ open class Node: Codable {
 
     if !isRootNode(node: parent) && !parent.canBeEmpty() && parent.getChildrenSize() == 0 {
       try removeNode(nodeToRemove: parent, restoreSelection: restoreSelection)
+    }
+
+    // The root is allowed to go empty -- it is the one element that is never removed for it --
+    // but the caret still has to land somewhere, and there is no block left to put it in. It
+    // sits on the root's own child list; the insert paths know how to start a block from there.
+    if restoreSelection, selection != nil, isRootNode(node: parent), parent.getChildrenSize() == 0
+    {
+      _ = try parent.selectEnd()
     }
   }
 
