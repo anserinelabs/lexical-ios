@@ -448,6 +448,11 @@ func moveSelectionPointToEnd(point: Point, node: Node) {
 func transferStartingElementPointToTextPoint(start: Point, end: Point, format: TextFormat, style: String) throws {
   guard let element = try start.getNode() as? ElementNode else { return }
 
+  // Whether this is a caret rather than a range, read before anything below
+  // moves either point. Both branches need the answer, and the end fixup
+  // changes it -- see the comments there.
+  let isCollapsed = start == end
+
   var placementNode = element.getChildAtIndex(index: start.offset)
   let textNode = try createTextNode(text: nil).setFormat(format: format)
   var target: Node
@@ -466,14 +471,19 @@ func transferStartingElementPointToTextPoint(start: Point, end: Point, format: T
     try element.append([target])
   } else {
     placementNode = try placementNode?.insertBefore(nodeToInsert: target)
-    // fix the end point offset if it refers to the same element as start,
-    // as we've now inserted another element before it.
-    if end.type == .element && end.key == start.key {
+    // Fix the end point offset if it refers to the same element as start, as
+    // we've now inserted another node before it -- but only for a real range.
+    // A caret's end is about to follow start onto the new text node, and
+    // bumping it first makes `start == end` false, so it never does: the caret
+    // silently becomes a selection reaching one child further than it did.
+    // insertText then treats that child as selected and deletes it, so typing
+    // in front of a decorator or a line break destroys it.
+    if !isCollapsed && end.type == .element && end.key == start.key {
       end.updatePoint(key: end.key, offset: end.offset + 1, type: .element)
     }
   }
 
-  if start == end {
+  if isCollapsed {
     end.updatePoint(key: textNode.getKey(), offset: 0, type: .text)
   }
 

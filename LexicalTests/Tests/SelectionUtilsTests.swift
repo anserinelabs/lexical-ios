@@ -590,6 +590,89 @@ final class SelectionUtilsTests: XCTestCase {
     }
   }
 
+  // A caret in front of a child has to stay a caret. It used to come out of here
+  // as a selection reaching one child further than it did, because the end fixup
+  // below ran before the `start == end` check and made that check false. insertText
+  // then treated the following child as selected and deleted it -- so typing in
+  // front of a decorator (a GIF, an inline image) or a line break destroyed it.
+  func testTransferStartingElementPointToTextPointKeepsACaretCollapsed() throws {
+    let view = LexicalView(editorConfig: EditorConfig(theme: Theme(), plugins: []), featureFlags: FeatureFlags())
+    let editor = view.editor
+
+    try editor.update {
+      guard let editorState = getActiveEditorState(),
+        let rootNode = editorState.getRootNode()
+      else {
+        XCTFail("should have editor state")
+        return
+      }
+
+      let lineBreakNode = LineBreakNode()
+      let paragraphNode = ParagraphNode()
+      try paragraphNode.append([lineBreakNode])
+      try rootNode.append([paragraphNode])
+
+      // The caret sitting in front of the line break.
+      let startPoint = createPoint(key: paragraphNode.key, offset: 0, type: .element)
+      let endPoint = createPoint(key: paragraphNode.key, offset: 0, type: .element)
+
+      try transferStartingElementPointToTextPoint(
+        start: startPoint,
+        end: endPoint,
+        format: TextFormat(),
+        style: ""
+      )
+
+      XCTAssertEqual(startPoint.type, .text)
+      XCTAssertEqual(endPoint.type, .text, "end should have followed start onto the new text node")
+      XCTAssertEqual(startPoint.key, endPoint.key)
+      XCTAssertEqual(startPoint.offset, 0)
+      XCTAssertEqual(endPoint.offset, 0)
+
+      XCTAssertEqual(paragraphNode.getChildrenSize(), 2)
+      XCTAssertTrue(
+        paragraphNode.getChildAtIndex(index: 1) is LineBreakNode,
+        "the node the caret sat in front of should still be there"
+      )
+    }
+  }
+
+  // The other half: a real range whose end is an element point in the same
+  // element still has to shift, because a node was just inserted before it.
+  func testTransferStartingElementPointToTextPointShiftsARangeEnd() throws {
+    let view = LexicalView(editorConfig: EditorConfig(theme: Theme(), plugins: []), featureFlags: FeatureFlags())
+    let editor = view.editor
+
+    try editor.update {
+      guard let editorState = getActiveEditorState(),
+        let rootNode = editorState.getRootNode()
+      else {
+        XCTFail("should have editor state")
+        return
+      }
+
+      let lineBreakNode = LineBreakNode()
+      let paragraphNode = ParagraphNode()
+      try paragraphNode.append([lineBreakNode])
+      try rootNode.append([paragraphNode])
+
+      let startPoint = createPoint(key: paragraphNode.key, offset: 0, type: .element)
+      let endPoint = createPoint(key: paragraphNode.key, offset: 1, type: .element)
+
+      try transferStartingElementPointToTextPoint(
+        start: startPoint,
+        end: endPoint,
+        format: TextFormat(),
+        style: ""
+      )
+
+      XCTAssertEqual(startPoint.type, .text)
+      XCTAssertEqual(endPoint.type, .element)
+      XCTAssertEqual(endPoint.key, paragraphNode.key)
+      XCTAssertEqual(endPoint.offset, 2, "end shifts by the node inserted before it")
+    }
+  }
+
   func testGetIndexFromPossibleClone() throws {
     let view = LexicalView(editorConfig: EditorConfig(theme: Theme(), plugins: []), featureFlags: FeatureFlags())
     let editor = view.editor
