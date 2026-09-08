@@ -50,8 +50,84 @@ protocol LexicalTextViewDelegate: NSObjectProtocol {
   public var caretRectTransform: ((TextView, CGRect, UITextPosition) -> CGRect)?
 
   public override func caretRect(for position: UITextPosition) -> CGRect {
+    let characterIndex = offset(from: beginningOfDocument, to: position)
+
+    if caretBelongsToPreviousLine(at: characterIndex),
+      let positionOnPreviousLine = self.position(from: position, offset: -1)
+    {
+      // UIKit's rect for the last character of that line has the vertical
+      // geometry right; move it along to the end of the line, which is where a
+      // caret at a soft wrap belongs.
+      var rect = super.caretRect(for: positionOnPreviousLine)
+      let glyphIndex = layoutManager.glyphIndexForCharacter(at: characterIndex - 1)
+      let usedRect = layoutManager.lineFragmentUsedRect(forGlyphAt: glyphIndex, effectiveRange: nil)
+      let isRightToLeft =
+        baseWritingDirection(for: positionOnPreviousLine, in: .forward) == .rightToLeft
+      rect.origin.x = (isRightToLeft ? usedRect.minX : usedRect.maxX) + textContainerInset.left
+
+      // Hand the transform the position the caret is drawn at rather than the one
+      // asked for, so a transform reading line geometry reads the line we moved to.
+      return caretRectTransform?(self, rect, positionOnPreviousLine) ?? rect
+    }
+
     let rect = super.caretRect(for: position)
     return caretRectTransform?(self, rect, position) ?? rect
+  }
+
+  /// Scroll to where the caret is actually drawn.
+  ///
+  /// The caret's own range resolves onto the wrapped line below at a soft wrap --
+  /// for a decorator, the bottom of the decorator. Ask for the last character of
+  /// the line the caret really sits on instead, so the text being typed is what
+  /// comes into view.
+  public override func scrollRangeToVisible(_ range: NSRange) {
+    if range.length == 0, caretBelongsToPreviousLine(at: range.location) {
+      super.scrollRangeToVisible(NSRange(location: range.location - 1, length: 1))
+      return
+    }
+    super.scrollRangeToVisible(range)
+  }
+
+  /// Whether the caret at `characterIndex` belongs to the end of the line before
+  /// it rather than to the start of the line it begins.
+  ///
+  /// A caret sitting exactly where a soft wrap starts has two readings, and there
+  /// is no affinity we can set to choose between them: the caret rect, and the
+  /// scrolling that follows it, both land on the wrapped line below.
+  ///
+  /// It only matters when that line is tall, and a decorator's line is as tall as
+  /// the decorator. Typing in front of one -- a GIF, an inline image -- puts the
+  /// caret at the decorator's left edge, a whole decorator height below the text
+  /// being typed, and the text view then scrolls there: the characters being
+  /// typed go off screen, and scrolling back to them lasts until the next
+  /// keystroke.
+  ///
+  /// Deliberately not every soft wrap. Tapping at the start of a wrapped line of
+  /// prose should leave the caret where it was tapped -- there the two candidate
+  /// positions are one line apart and the user picked one on purpose. A
+  /// decorator's line is the case that hurts, and a decorator has no interior for
+  /// the caret to sit in front of anyway.
+  func caretBelongsToPreviousLine(at characterIndex: Int) -> Bool {
+    guard characterIndex > 0, characterIndex < textStorage.length else { return false }
+
+    // Only a soft wrap. A hard break puts the caret at the start of the line the
+    // user made, which is where they expect it.
+    if textStorage.mutableString.character(at: characterIndex - 1) == 0x0A {
+      return false
+    }
+
+    // Only when a decorator is what wrapped.
+    guard
+      textStorage.attribute(.attachment, at: characterIndex, effectiveRange: nil) is TextAttachment
+    else {
+      return false
+    }
+
+    // And only when it did wrap, i.e. the decorator starts the line.
+    let glyphIndex = layoutManager.glyphIndexForCharacter(at: characterIndex)
+    var lineGlyphRange = NSRange()
+    _ = layoutManager.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: &lineGlyphRange)
+    return lineGlyphRange.location == glyphIndex
   }
 
   // MARK: - Init

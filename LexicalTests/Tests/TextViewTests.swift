@@ -8,7 +8,142 @@
 @testable import Lexical
 import XCTest
 
+extension NodeType {
+  static let testWideDecorator = NodeType(rawValue: "testWideDecorator")
+}
+
+/// A decorator as wide as the editor, so it can never share a line with text and
+/// always wraps onto one of its own -- a GIF, in practice.
+final class TestWideDecoratorNode: DecoratorNode {
+  override init() {
+    super.init(nil)
+  }
+
+  public required init(_ key: NodeKey?) {
+    super.init(key)
+  }
+
+  required init(from decoder: Decoder) throws {
+    fatalError("init(from:) has not been implemented")
+  }
+
+  override public func clone() -> Self {
+    Self(key)
+  }
+
+  override public func createView() -> UIImageView {
+    return UIImageView()
+  }
+
+  override public func decorate(view: UIView) {}
+
+  override public func sizeForDecoratorView(textViewWidth: CGFloat, attributes: [NSAttributedString.Key: Any]) -> CGSize {
+    return CGSize(width: textViewWidth, height: 200)
+  }
+}
+
 final class TextViewTests: XCTestCase {
+
+  // MARK: - Caret line affinity
+
+  /// Builds `paragraph["HELLO", <wide decorator>]` in a laid-out view. The
+  /// decorator cannot fit after the text, so it wraps onto a line of its own and
+  /// the caret at index 5 sits exactly on the boundary.
+  private func makeViewWithTextThenWideDecorator() throws -> LexicalView {
+    let view = LexicalView(
+      editorConfig: EditorConfig(theme: Theme(), plugins: []), featureFlags: FeatureFlags())
+    try view.editor.registerNode(nodeType: .testWideDecorator, class: TestWideDecoratorNode.self)
+    view.frame = CGRect(x: 0, y: 0, width: 320, height: 600)
+
+    try view.editor.update {
+      guard let root = getRoot(), let paragraph = root.getFirstChild() as? ParagraphNode else {
+        XCTFail("expected the initial empty paragraph")
+        return
+      }
+      let text = TextNode()
+      try text.setText("HELLO")
+      try paragraph.append([text])
+      try paragraph.append([TestWideDecoratorNode()])
+    }
+
+    view.setNeedsLayout()
+    view.layoutIfNeeded()
+    view.textView.layoutManager.ensureLayout(for: view.textView.textContainer)
+    return view
+  }
+
+  /// The caret in front of a wrapped decorator belongs to the end of the text
+  /// before it. Resolved forwards, it lands at the decorator's left edge -- for a
+  /// GIF, a whole GIF height below the text being typed, which the text view then
+  /// scrolls to.
+  func testCaretInFrontOfAWrappedDecoratorBelongsToTheTextLine() throws {
+    let textView = try makeViewWithTextThenWideDecorator().textView
+    XCTAssertEqual(textView.textStorage.string, "HELLO\u{fffc}", "text then the decorator")
+
+    let decoratorIndex = 5
+    XCTAssertTrue(
+      textView.caretBelongsToPreviousLine(at: decoratorIndex),
+      "the caret in front of the wrapped decorator belongs to the text's line")
+
+    // The decorator really is on a line of its own below the text.
+    let decoratorGlyph = textView.layoutManager.glyphIndexForCharacter(at: decoratorIndex)
+    let decoratorLine = textView.layoutManager.lineFragmentRect(
+      forGlyphAt: decoratorGlyph, effectiveRange: nil)
+    let textLine = textView.layoutManager.lineFragmentRect(forGlyphAt: 0, effectiveRange: nil)
+    XCTAssertGreaterThan(decoratorLine.minY, textLine.minY, "the decorator should have wrapped")
+
+    guard
+      let caretPosition = textView.position(from: textView.beginningOfDocument, offset: decoratorIndex),
+      let startPosition = textView.position(from: textView.beginningOfDocument, offset: 0)
+    else {
+      XCTFail("expected text positions")
+      return
+    }
+
+    let caret = textView.caretRect(for: caretPosition)
+    XCTAssertLessThan(caret.minY, decoratorLine.minY, "the caret should be drawn above the decorator")
+    XCTAssertGreaterThan(
+      caret.minX, textView.caretRect(for: startPosition).minX,
+      "the caret should be at the end of the text, not the start of the decorator's line")
+  }
+
+  /// Only a decorator's line. Inside the text there is no ambiguity to resolve.
+  func testCaretInsideTextDoesNotMoveLine() throws {
+    let textView = try makeViewWithTextThenWideDecorator().textView
+    XCTAssertFalse(textView.caretBelongsToPreviousLine(at: 2))
+  }
+
+  /// And not a wrap in ordinary prose: the caret belongs where it was put, and
+  /// the two candidate positions are only a line apart.
+  func testCaretAtAProseWrapDoesNotMoveLine() throws {
+    let view = LexicalView(
+      editorConfig: EditorConfig(theme: Theme(), plugins: []), featureFlags: FeatureFlags())
+    view.frame = CGRect(x: 0, y: 0, width: 320, height: 600)
+
+    try view.editor.update {
+      guard let root = getRoot(), let paragraph = root.getFirstChild() as? ParagraphNode else {
+        XCTFail("expected the initial empty paragraph")
+        return
+      }
+      let text = TextNode()
+      try text.setText(String(repeating: "wrapping words ", count: 12))
+      try paragraph.append([text])
+    }
+
+    view.setNeedsLayout()
+    view.layoutIfNeeded()
+    let textView = view.textView
+    textView.layoutManager.ensureLayout(for: textView.textContainer)
+
+    var firstLineGlyphs = NSRange()
+    _ = textView.layoutManager.lineFragmentRect(forGlyphAt: 0, effectiveRange: &firstLineGlyphs)
+    XCTAssertLessThan(
+      NSMaxRange(firstLineGlyphs), textView.textStorage.length, "the text should have wrapped")
+
+    let secondLineStart = textView.layoutManager.characterIndexForGlyph(
+      at: NSMaxRange(firstLineGlyphs))
+    XCTAssertFalse(textView.caretBelongsToPreviousLine(at: secondLineStart))
+  }
 
   func testInitialise() throws {
     let view = LexicalView(editorConfig: EditorConfig(theme: Theme(), plugins: []), featureFlags: FeatureFlags())
