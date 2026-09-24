@@ -265,6 +265,9 @@ enum AttributeUtils {
     spacingBefore += attributes.marginTop
     spacingBefore += attributes.paddingTop
     firstMutableParaStyle.paragraphSpacingBefore = spacingBefore
+    if let alignment = attributes.alignment {
+      firstMutableParaStyle.alignment = alignment
+    }
 
     switch first {
     case .extraLineFragment:
@@ -294,6 +297,9 @@ enum AttributeUtils {
     spacingAfter += attributes.marginBottom
     spacingAfter += attributes.paddingBottom
     lastMutableParaStyle.paragraphSpacing = spacingAfter
+    if let alignment = attributes.alignment {
+      lastMutableParaStyle.alignment = alignment
+    }
 
     switch last {
     case .extraLineFragment:

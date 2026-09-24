@@ -182,21 +182,29 @@ public typealias CustomDrawingHandler = (
 ) -> Void
 
 @objc public final class BlockLevelAttributes: NSObject {
-  public init(marginTop: CGFloat, marginBottom: CGFloat, paddingTop: CGFloat, paddingBottom: CGFloat) {
+  public init(marginTop: CGFloat, marginBottom: CGFloat, paddingTop: CGFloat, paddingBottom: CGFloat, alignment: NSTextAlignment? = nil) {
     self.marginTop = marginTop
     self.marginBottom = marginBottom
     self.paddingTop = paddingTop
     self.paddingBottom = paddingBottom
+    self.alignment = alignment
   }
 
   let marginTop: CGFloat
   let marginBottom: CGFloat
   let paddingTop: CGFloat
   let paddingBottom: CGFloat
+  /// The alignment to give the block's paragraphs, or nil to leave whatever alignment they already have.
+  let alignment: NSTextAlignment?
+
+  /// A copy of these attributes with the given alignment.
+  public func withAlignment(_ alignment: NSTextAlignment?) -> BlockLevelAttributes {
+    BlockLevelAttributes(marginTop: marginTop, marginBottom: marginBottom, paddingTop: paddingTop, paddingBottom: paddingBottom, alignment: alignment)
+  }
 
   override public func isEqual(_ object: Any?) -> Bool {
     if let object = object as? BlockLevelAttributes {
-      return self.marginTop == object.marginTop && self.marginBottom == object.marginBottom && self.paddingTop == object.paddingTop && self.paddingBottom == object.paddingBottom
+      return self.marginTop == object.marginTop && self.marginBottom == object.marginBottom && self.paddingTop == object.paddingTop && self.paddingBottom == object.paddingBottom && self.alignment == object.alignment
     }
     return false
   }
@@ -207,6 +215,7 @@ public typealias CustomDrawingHandler = (
     hasher.combine(marginBottom)
     hasher.combine(paddingTop)
     hasher.combine(paddingBottom)
+    hasher.combine(alignment?.rawValue)
     return hasher.finalize()
   }
 }

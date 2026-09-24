@@ -36,6 +36,17 @@ public class ParagraphNode: ElementNode {
     return [:]
   }
 
+  override public func getBlockLevelAttributes(theme: Theme) -> BlockLevelAttributes? {
+    let attributes = theme.getBlockLevelAttributes(type)
+    guard let centerParagraph = theme.centerParagraph else {
+      return attributes
+    }
+    // Always give an alignment, never nil: the paragraph style is copied forward from the text storage,
+    // so a paragraph that stops being centered has to be set back to natural explicitly.
+    let base = attributes ?? BlockLevelAttributes(marginTop: 0, marginBottom: 0, paddingTop: 0, paddingBottom: 0)
+    return base.withAlignment(centerParagraph(self) ? .center : .natural)
+  }
+
   override open func insertNewAfter(selection: RangeSelection?) throws -> ParagraphNode? {
     let newElement = createParagraphNode()
     let direction = getDirection()

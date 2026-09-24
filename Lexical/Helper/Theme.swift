@@ -67,6 +67,11 @@ import Foundation
   /// such as an ellipsis or "See More" or similar).
   public var truncationIndicatorAttributes: AttributeDict = [:]
 
+  /// Decides whether a paragraph node is centered. It is asked every time the paragraph's block level
+  /// attributes are computed, so it can depend on the paragraph's children (e.g. centering a paragraph
+  /// that holds only an image). Leave nil to never center.
+  public var centerParagraph: ((ParagraphNode) -> Bool)?
+
   private var attributes: [Key: AttributeDict] = [:]
   private var blockLevelAttributes: [NodeType: BlockLevelAttributes] = [:]
 
